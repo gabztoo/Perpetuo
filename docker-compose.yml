@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: pnpm dev
+    volumes:
+      - .:/app
+    ports:
+      - "3000:3000"
+    environment:
+      - PERPETUO_CONFIG_PATH=/app/perpetuo.config.yaml
+      - LOG_LEVEL=info
+      - DATABASE_URL=postgres://perpetuo:perpetuo@postgres:5432/perpetuo
+      - REDIS_URL=redis://redis:6379
+
+  control-plane:
+    build:
+      context: .
+      dockerfile: Dockerfile.control-plane
+    command: pnpm dev
+    volumes:
+      - .:/app
+    ports:
+      - "3001:3001"
+    environment:
+      - DATABASE_URL=postgres://perpetuo:perpetuo@postgres:5432/perpetuo
+      - JWT_SECRET=dev-secret
+      - REDIS_URL=redis://redis:6379
+
+  console-web:
+    build:
+      context: .
+      dockerfile: Dockerfile.console-web
+    command: pnpm dev
+    volumes:
+      - .:/app
+    ports:
+      - "3002:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: perpetuo
+      POSTGRES_PASSWORD: perpetuo
+      POSTGRES_DB: perpetuo
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+
+volumes:
+  postgres_data:

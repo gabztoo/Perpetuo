@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  DEV
+  VIEWER
+}
+
+enum ProviderStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum PolicyMode {
+  PASS_THROUGH
+  RELIABLE
+  CHEAPEST
+  CUSTOM
+}
+
+model Tenant {
+  id        String       @id @default(uuid())
+  name      String
+  slug      String       @unique
+  planId    String?
+  createdAt DateTime     @default(now())
+  
+  users     TenantUser[]
+  apiTokens ApiToken[]
+  providers ProviderKey[]
+  projects  Project[]
+}
+
+model User {
+  id           String       @id @default(uuid())
+  email        String       @unique
+  name         String
+  passwordHash String?
+  createdAt    DateTime     @default(now())
+  
+  tenants      TenantUser[]
+}
+
+model TenantUser {
+  tenantId String
+  userId   String
+  role     UserRole
+  
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+  user     User   @relation(fields: [userId], references: [id])
+
+  @@id([tenantId, userId])
+}
+
+model ApiToken {
+  id         String   @id @default(uuid())
+  tenantId   String
+  name       String
+  tokenHash  String
+  lastUsedAt DateTime?
+  createdAt  DateTime @default(now())
+  
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+}
+
+model ProviderKey {
+  id            String         @id @default(uuid())
+  tenantId      String
+  provider      String         // e.g., "openai", "anthropic"
+  name          String
+  keyCiphertext String
+  keyLast4      String
+  status        ProviderStatus @default(ACTIVE)
+  createdAt     DateTime       @default(now())
+  rotatedAt     DateTime?
+  
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+}
+
+model Project {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  createdAt DateTime @default(now())
+  
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  routes    Route[]
+}
+
+model Route {
+  id          String   @id @default(uuid())
+  projectId   String
+  key         String   // e.g. "chatbot", "default"
+  displayName String?
+  createdAt   DateTime @default(now())
+  
+  project     Project  @relation(fields: [projectId], references: [id])
+  policy      Policy?
+  
+  @@unique([projectId, key])
+}
+
+model Policy {
+  id        String       @id @default(uuid())
+  routeId   String       @unique
+  mode      PolicyMode   @default(CUSTOM)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  
+  route     Route        @relation(fields: [routeId], references: [id])
+  rules     PolicyRule[]
+}
+
+model PolicyRule {
+  id         String @id @default(uuid())
+  policyId   String
+  priority   Int
+  matchJson  Json   // { promptMinTokens?, tagsAny?, ... }
+  actionJson Json   // { modelOrder: [], fallbackDepth?, ... }
+  
+  policy     Policy @relation(fields: [policyId], references: [id])
+}
+
+// Events table for Audit/Logs (Managed manually via raw SQL in migration usually if partitioning is needed, 
+// but here mapped for convenience if we want Prisma access, though writes are high volume)
+model Event {
+  id         String   @id @default(uuid())
+  tenantId   String
+  type       String
+  payload    Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("events") // Maps to existing table created by SQL migration
+}

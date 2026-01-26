@@ -1,0 +1,58 @@
+# Perpetuo AI Gateway Configuration
+
+tenants:
+  - id: "tenant-1"
+    name: "Free Tier User"
+    plan: "free"
+    apiKeys: ["sk-perpetuo-free-1"]
+    limits:
+      rateLimitMin: 5
+      budgetDay: 1.0
+
+  - id: "tenant-2"
+    name: "Pro User"
+    plan: "pro"
+    apiKeys: ["sk-perpetuo-pro-1"]
+    limits:
+      rateLimitMin: 100
+      budgetDay: 50.0
+
+providers:
+  - name: openai
+    enabled: true
+    apiKeyEnvVar: OPENAI_API_KEY
+    timeoutMs: 15000
+
+  - name: mock
+    enabled: true
+    timeoutMs: 5000
+
+models:
+  - name: gpt-4
+    provider: openai
+    costPer1kInput: 0.03
+    costPer1kOutput: 0.06
+    tags: ["smart", "expensive"]
+
+  - name: gpt-3.5-turbo
+    provider: openai
+    costPer1kInput: 0.0015
+    costPer1kOutput: 0.002
+    tags: ["fast", "cheap"]
+
+  - name: mock-gpt
+    provider: mock
+    costPer1kInput: 0
+    costPer1kOutput: 0
+    tags: ["test"]
+
+policies:
+  defaultRouting: ["gpt-3.5-turbo", "mock-gpt"]
+  
+  fallback:
+    strategy: deterministic
+    order: ["mock-gpt"] # If primary fails, go here
+    retry:
+      on: [429, 500, 502, 503]
+      backoffMs: 200
+      maxAttempts: 3

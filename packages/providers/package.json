@@ -1,0 +1,21 @@
+{
+    "name": "@perpetuo/providers",
+    "version": "0.0.1",
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "scripts": {
+        "build": "tsup src/index.ts --format cjs,esm --dts",
+        "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+        "lint": "eslint src/**"
+    },
+    "dependencies": {
+        "@perpetuo/core": "workspace:*",
+        "undici": "^6.0.0"
+    },
+    "devDependencies": {
+        "@types/node": "^20.10.0",
+        "tsup": "^8.0.1",
+        "typescript": "^5.3.3"
+    }
+}
