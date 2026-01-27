@@ -51,9 +51,15 @@ export function createJWTSchema(jwtSecret: string) {
 export async function validateAPIKey(
   key: string,
   prisma: any
-): Promise<{ workspace_id: string } | null> {
+): Promise<{ workspace_id: string; userId: string; keyId: string } | null> {
+  // Import here to avoid circular dependency
+  const { hashAPIKey } = await import('./crypto');
+  
+  // Hash the incoming key and compare to stored hash
+  const keyHash = hashAPIKey(key);
+  
   const apiKey = await prisma.aPIKey.findUnique({
-    where: { key },
+    where: { key_hash: keyHash },
     include: { workspace: true },
   });
 
@@ -67,5 +73,9 @@ export async function validateAPIKey(
     data: { last_used: new Date() },
   });
 
-  return { workspace_id: apiKey.workspace_id };
+  return {
+    workspace_id: apiKey.workspace_id,
+    userId: apiKey.user_id,
+    keyId: apiKey.id,
+  };
 }

@@ -2,7 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
 import { sendSuccess, sendError } from '../shared/http';
-import { generateAPIKey } from '../shared/crypto';
+import { generateAPIKey, hashAPIKey } from '../shared/crypto';
 
 const CreateAPIKeySchema = z.object({
   name: z.string().min(1),
@@ -29,7 +29,7 @@ export async function apiKeyRoutes(app: FastifyInstance, prisma: PrismaClient) {
           select: {
             id: true,
             name: true,
-            key: true, // WARNING: only on list, not in secure APIs
+            key_hash: true, // Do NOT expose the key itself, only hash
             active: true,
             last_used: true,
             created_at: true,
@@ -63,23 +63,31 @@ export async function apiKeyRoutes(app: FastifyInstance, prisma: PrismaClient) {
           return sendError(reply, 'Workspace not found', 404);
         }
 
+        // Generate the key
+        const plainKey = generateAPIKey();
+        const keyHash = hashAPIKey(plainKey);
+
         const apiKey = await prisma.aPIKey.create({
           data: {
             workspace_id: request.params.workspaceId,
             user_id: request.user.sub,
-            key: generateAPIKey(),
+            key_hash: keyHash,
             name: body.name,
           },
           select: {
             id: true,
             name: true,
-            key: true,
             active: true,
             created_at: true,
           },
         });
 
-        return sendSuccess(reply, apiKey, 201);
+        // Return the plain key ONLY on creation (never stored as plaintext)
+        return sendSuccess(reply, {
+          ...apiKey,
+          key: plainKey, // Show only once!
+          warning: 'Save this key immediately. You will not see it again.',
+        }, 201);
       } catch (error) {
         if (error instanceof z.ZodError) {
           return sendError(reply, 'Invalid input', 400);

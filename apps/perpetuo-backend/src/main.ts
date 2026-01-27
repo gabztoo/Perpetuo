@@ -1,6 +1,7 @@
 import fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
+import rateLimit from '@fastify/rate-limit';
 import { PrismaClient } from '@prisma/client';
 import { authRoutes } from './modules/auth/routes';
 import { workspaceRoutes } from './modules/workspaces/routes';
@@ -23,6 +24,7 @@ const app = fastify({
   logger: NODE_ENV === 'development',
   disableRequestLogging: NODE_ENV === 'production',
   requestIdHeader: 'x-request-id',
+  trustProxy: true, // Important for rate limiting behind proxy
 });
 
 // Register plugins
@@ -37,6 +39,14 @@ app.register(jwt, {
   sign: {
     expiresIn: '30d',
   },
+});
+
+// Register rate limiting (SECURITY: prevents abuse)
+// By IP: 1000 requests per minute
+// By API key: 60 requests per minute (custom in gateway)
+app.register(rateLimit, {
+  max: 1000,
+  timeWindow: '1 minute',
 });
 
 // Health check
@@ -74,6 +84,7 @@ async function start() {
 ╠════════════════════════════════════════════╣
 ║ Environment: ${NODE_ENV.padEnd(30)} ║
 ║ Port: ${String(PORT).padEnd(38)} ║
+║ Rate Limit: 1000/min (IP), 60/min (key)  ║
 ║ Gateway: POST /v1/chat/completions       ║
 ║ Dashboard: http://localhost:${String(3001).padEnd(28)} ║
 ╚════════════════════════════════════════════╝
