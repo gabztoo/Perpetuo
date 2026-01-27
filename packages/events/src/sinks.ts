@@ -35,7 +35,7 @@ export class PostgresSink implements EventSink {
         // Schema: id (uuid/text), tenant_id (text), type (text), payload (jsonb), created_at (timestamptz)
         try {
             await this.pool.query(
-                `INSERT INTO events (id, tenant_id, type, payload, created_at) VALUES ($1, $2, $3, $4, to_timestamp($5 / 1000.0))`,
+                `INSERT INTO events (id, "tenantId", type, payload, created_at) VALUES ($1, $2, $3, $4, to_timestamp($5 / 1000.0))`,
                 [event.id, event.tenantId, event.type, event.meta || {}, event.timestamp]
             );
         } catch (err) {
