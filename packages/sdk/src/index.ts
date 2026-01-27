@@ -57,6 +57,10 @@ export class PerpetuoClient {
             "x-tenant-id": opts.tenantId,
         };
 
+        if (opts.apiKey) {
+            this.headers["Authorization"] = `Bearer ${opts.apiKey}`;
+        }
+
         if (opts.providerKeys) {
             for (const [provider, key] of Object.entries(opts.providerKeys)) {
                 this.headers[`x-provider-key-${provider.toLowerCase()}`] = key;

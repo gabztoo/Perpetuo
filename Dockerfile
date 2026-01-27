@@ -1,20 +1,26 @@
+# Build stage
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY apps/perpetuo-backend ./
+
+RUN npm install
+
+RUN npm run build
+
+# Runtime stage
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm@9.0.0
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
-# Copy workspace configs
-COPY package.json pnpm-workspace.yaml tsconfig.json ./
-
-# Copy packages
-COPY packages ./packages/
-COPY apps ./apps/
-
-# Install dependencies
-RUN pnpm install
+RUN npm install --production
 
 EXPOSE 3000
 
-CMD ["pnpm", "filter", "perpetuo-gateway", "start"]
+CMD ["node", "dist/main.js"]

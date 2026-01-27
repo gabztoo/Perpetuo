@@ -23,9 +23,20 @@ providers:
     apiKeyEnvVar: OPENAI_API_KEY
     timeoutMs: 15000
 
-  - name: mock
+  - name: groq
     enabled: true
-    timeoutMs: 5000
+    apiKeyEnvVar: GROQ_API_KEY
+    timeoutMs: 15000
+
+  - name: gemini
+    enabled: true
+    apiKeyEnvVar: GEMINI_API_KEY
+    timeoutMs: 15000
+
+  - name: openrouter
+    enabled: true
+    apiKeyEnvVar: OPENROUTER_API_KEY
+    timeoutMs: 15000
 
 models:
   - name: gpt-4
@@ -40,19 +51,14 @@ models:
     costPer1kOutput: 0.002
     tags: ["fast", "cheap"]
 
-  - name: mock-gpt
-    provider: mock
-    costPer1kInput: 0
-    costPer1kOutput: 0
-    tags: ["test"]
-
 policies:
-  defaultRouting: ["gpt-3.5-turbo", "mock-gpt"]
+  defaultRouting: ["groq", "gemini", "openrouter", "openai"]
   
   fallback:
     strategy: deterministic
-    order: ["mock-gpt"] # If primary fails, go here
+    order: ["groq", "gemini", "openrouter", "openai"]
     retry:
       on: [429, 500, 502, 503]
       backoffMs: 200
       maxAttempts: 3
+

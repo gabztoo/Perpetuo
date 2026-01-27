@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // --- Domain Entites ---
 
-export type ProviderName = 'openai' | 'gemini' | 'groq' | 'mock' | string;
+export type ProviderName = 'openai' | 'gemini' | 'groq' | 'openrouter' | string;
 
 export interface ChatMessage {
     role: 'system' | 'user' | 'assistant' | 'function';

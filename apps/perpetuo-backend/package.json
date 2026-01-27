@@ -1,0 +1,30 @@
+{
+  "name": "perpetuo-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsup src/main.ts --format esm --outDir dist",
+    "start": "node dist/main.js",
+    "lint": "eslint src/**",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "fastify": "^4.24.3",
+    "@fastify/cors": "^8.4.1",
+    "@fastify/jwt": "^7.2.3",
+    "axios": "^1.13.3",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "prisma": "^5.7.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3",
+    "eslint": "^8.56.0"
+  }
+}

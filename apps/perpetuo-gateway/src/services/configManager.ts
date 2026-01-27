@@ -23,8 +23,8 @@ export class ConfigManager {
     private controlPlaneUrl: string;
     private internalToken: string;
 
-    constructor() {
-        this.localConfig = loadConfig();
+    constructor(config: PerpetuoConfig) {
+        this.localConfig = config;
         this.controlPlaneUrl = process.env.CONTROL_PLANE_URL || 'http://localhost:3001';
         this.internalToken = process.env.ADMIN_INTERNAL_TOKEN || 'dev-internal-secret';
     }

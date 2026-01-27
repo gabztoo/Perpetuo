@@ -2,7 +2,14 @@ import { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '@perpetuo/db';
-import { CreateUserSchema, LoginSchema } from '@perpetuo/shared';
+import { CreateUserSchema, LoginSchema, ForgotPasswordSchema, ResetPasswordSchema } from '@perpetuo/shared';
+import { sendEmail, generateResetToken, getResetPasswordEmailHtml } from '../../services/email';
+
+// JWT payload interface
+interface JwtPayload {
+    id: string;
+    email: string;
+}
 
 export async function authRoutes(fastify: FastifyInstance) {
 
@@ -90,8 +97,82 @@ export async function authRoutes(fastify: FastifyInstance) {
         return { status: 'ok' };
     });
 
+    // Forgot Password - sends reset email
+    fastify.post('/auth/forgot-password', {
+        config: {
+            rateLimit: {
+                max: 3,
+                timeWindow: '15 minutes'
+            }
+        }
+    }, async (req, reply) => {
+        const { email } = ForgotPasswordSchema.parse(req.body);
+
+        const user = await prisma.user.findUnique({ where: { email } });
+
+        // Always return success to prevent email enumeration
+        if (!user) {
+            return { status: 'ok', message: 'If the email exists, a reset link has been sent.' };
+        }
+
+        const resetToken = generateResetToken();
+        const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                passwordResetToken: resetToken,
+                passwordResetExpires: resetExpires,
+            }
+        });
+
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+        const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
+
+        const emailHtml = getResetPasswordEmailHtml(resetUrl, user.name);
+
+        await sendEmail({
+            to: email,
+            subject: 'Reset your Perpetuo password',
+            html: emailHtml,
+        });
+
+        return { status: 'ok', message: 'If the email exists, a reset link has been sent.' };
+    });
+
+    // Reset Password - validates token and updates password
+    fastify.post('/auth/reset-password', async (req, reply) => {
+        const { token, password } = ResetPasswordSchema.parse(req.body);
+
+        const user = await prisma.user.findFirst({
+            where: {
+                passwordResetToken: token,
+                passwordResetExpires: {
+                    gt: new Date()
+                }
+            }
+        });
+
+        if (!user) {
+            return reply.code(400).send({ error: 'Invalid or expired reset token' });
+        }
+
+        const passwordHash = await bcrypt.hash(password, 10);
+
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                passwordHash,
+                passwordResetToken: null,
+                passwordResetExpires: null,
+            }
+        });
+
+        return { status: 'ok', message: 'Password reset successfully' };
+    });
+
     fastify.get('/me', { preValidation: [fastify.authenticate] }, async (req, reply) => {
-        const user = req.user!;
+        const user = req.user as JwtPayload;
         const dbUser = await prisma.user.findUnique({
             where: { id: user.id },
             include: { tenants: { include: { tenant: true } } }
@@ -99,3 +180,4 @@ export async function authRoutes(fastify: FastifyInstance) {
         return dbUser;
     });
 }
+

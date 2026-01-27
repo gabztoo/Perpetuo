@@ -1,64 +1,50 @@
 version: '3.8'
 
 services:
-  gateway:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    command: pnpm dev
-    volumes:
-      - .:/app
-    ports:
-      - "3000:3000"
-    environment:
-      - PERPETUO_CONFIG_PATH=/app/perpetuo.config.yaml
-      - LOG_LEVEL=info
-      - DATABASE_URL=postgres://perpetuo:perpetuo@postgres:5432/perpetuo
-      - REDIS_URL=redis://redis:6379
-
-  control-plane:
-    build:
-      context: .
-      dockerfile: Dockerfile.control-plane
-    command: pnpm dev
-    volumes:
-      - .:/app
-    ports:
-      - "3001:3001"
-    environment:
-      - DATABASE_URL=postgres://perpetuo:perpetuo@postgres:5432/perpetuo
-      - JWT_SECRET=dev-secret
-      - REDIS_URL=redis://redis:6379
-
-  console-web:
-    build:
-      context: .
-      dockerfile: Dockerfile.console-web
-    command: pnpm dev
-    volumes:
-      - .:/app
-    ports:
-      - "3002:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:3001
-
-  redis:
-    image: redis:alpine
-    ports:
-      - "6379:6379"
-
   postgres:
-    image: postgres:15-alpine
-    restart: always
+    image: postgres:16-alpine
     environment:
+      POSTGRES_DB: perpetuo
       POSTGRES_USER: perpetuo
       POSTGRES_PASSWORD: perpetuo
-      POSTGRES_DB: perpetuo
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U perpetuo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: apps/perpetuo-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://perpetuo:perpetuo@postgres:5432/perpetuo
+      JWT_SECRET: dev-secret-change-in-prod
+      PORT: 3000
+      FRONTEND_URL: http://localhost:3001
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/perpetuo-backend:/app
+    command: npm run dev
+
+  dashboard:
+    build:
+      context: apps/perpetuo-dashboard
+    environment:
+      VITE_API_URL: http://localhost:3000
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./apps/perpetuo-dashboard:/app
+    command: npm run dev
 
 volumes:
   postgres_data:

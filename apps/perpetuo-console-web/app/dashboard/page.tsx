@@ -8,24 +8,61 @@ import {
     CardHeader,
     CardTitle
 } from "@/components/ui/card";
-import { Activity, CreditCard, DollarSign, Users } from "lucide-react";
+import { Activity, DollarSign } from "lucide-react";
+
+interface DashboardStats {
+    requests: number;
+    errors: number;
+    cost: number;
+    activeKeys: number;
+    errorRate: string;
+}
 
 export default function DashboardPage() {
-    const [stats, setStats] = useState<any>(null);
+    const [stats, setStats] = useState<DashboardStats | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        // Mock data fetch for now, or fetch usage
-        setLoading(false);
-        setStats({
-            requests: 12543,
-            errors: 42,
-            cost: 15.42,
-            activeKeys: 3
-        });
+        fetchDashboardStats();
     }, []);
 
-    if (loading) return <div>Loading...</div>;
+    const fetchDashboardStats = async () => {
+        try {
+            // Fetch real stats from Control Plane API
+            const [keysResponse] = await Promise.all([
+                api.get('/provider-keys?tenantId=gasto-recorrente').catch(() => ({ data: [] }))
+            ]);
+
+            const activeKeys = Array.isArray(keysResponse.data)
+                ? keysResponse.data.filter((k: any) => k.status === 'ACTIVE').length
+                : 0;
+
+            // Stats will be populated from real metrics once available
+            setStats({
+                requests: 0,
+                errors: 0,
+                cost: 0,
+                activeKeys,
+                errorRate: '0%'
+            });
+        } catch (e) {
+            console.error('Failed to fetch dashboard stats:', e);
+            setError('Falha ao carregar estatísticas. Verifique a conexão com o Control Plane.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (loading) return <div className="flex items-center justify-center p-8">Carregando...</div>;
+
+    if (error) return (
+        <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+            {error}
+        </div>
+    );
+
+    if (!stats) return null;
 
     return (
         <div className="space-y-4">
@@ -39,7 +76,7 @@ export default function DashboardPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{stats.requests.toLocaleString()}</div>
-                        <p className="text-xs text-muted-foreground">+20.1% from last month</p>
+                        <p className="text-xs text-muted-foreground">Requisições processadas</p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -49,7 +86,7 @@ export default function DashboardPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{stats.errors}</div>
-                        <p className="text-xs text-muted-foreground text-red-500">0.3% Error Rate</p>
+                        <p className="text-xs text-muted-foreground text-red-500">{stats.errorRate} Error Rate</p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -58,8 +95,8 @@ export default function DashboardPage() {
                         <DollarSign className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">${stats.cost}</div>
-                        <p className="text-xs text-muted-foreground">+4% from last month</p>
+                        <div className="text-2xl font-bold">${stats.cost.toFixed(2)}</div>
+                        <p className="text-xs text-muted-foreground">Custo estimado hoje</p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -69,7 +106,7 @@ export default function DashboardPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{stats.activeKeys}</div>
-                        <p className="text-xs text-muted-foreground">Provider keys active</p>
+                        <p className="text-xs text-muted-foreground">Provider keys ativas</p>
                     </CardContent>
                 </Card>
             </div>
@@ -77,10 +114,10 @@ export default function DashboardPage() {
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
                 <Card className="col-span-4">
                     <CardHeader>
-                        <CardTitle>Recent Activity</CardTitle>
+                        <CardTitle>Atividade Recente</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <p>Chart Placeholder (Recharts)</p>
+                        <p className="text-muted-foreground">Gráfico disponível quando métricas estiverem configuradas</p>
                     </CardContent>
                 </Card>
                 <Card className="col-span-3">
@@ -88,22 +125,7 @@ export default function DashboardPage() {
                         <CardTitle>Top Routes</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="space-y-4">
-                            <div className="flex items-center">
-                                <div className="ml-4 space-y-1">
-                                    <p className="text-sm font-medium leading-none">chatbot</p>
-                                    <p className="text-sm text-muted-foreground">gpt-4, claude-3</p>
-                                </div>
-                                <div className="ml-auto font-medium">8,234 reqs</div>
-                            </div>
-                            <div className="flex items-center">
-                                <div className="ml-4 space-y-1">
-                                    <p className="text-sm font-medium leading-none">document-qa</p>
-                                    <p className="text-sm text-muted-foreground">gpt-3.5-turbo</p>
-                                </div>
-                                <div className="ml-auto font-medium">3,105 reqs</div>
-                            </div>
-                        </div>
+                        <p className="text-muted-foreground">Configure rotas no Control Plane para visualizar</p>
                     </CardContent>
                 </Card>
             </div>

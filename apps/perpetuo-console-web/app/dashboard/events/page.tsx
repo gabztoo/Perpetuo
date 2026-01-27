@@ -3,66 +3,96 @@
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Activity } from "lucide-react";
+import { Activity, RefreshCw } from "lucide-react";
+
+interface PerpetuoEvent {
+    id: string;
+    type: string;
+    tenantId: string;
+    timestamp: number;
+    meta: Record<string, any>;
+}
 
 export default function EventsPage() {
-    const [events, setEvents] = useState<any[]>([]);
+    const [events, setEvents] = useState<PerpetuoEvent[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         fetchEvents();
     }, []);
 
     const fetchEvents = async () => {
+        setLoading(true);
+        setError(null);
         try {
-            // Fetch internal events or exposed events from CP
-            // Assuming CP has an endpoint or we mock it for now.
-            // In V1 we had GET /internal/events on Gateway.
-            // In V2, Control Plane should proxy or read from DB event log.
-            // Let's assume we read from a mocked endpoint or partial implementation.
+            // Fetch real events from Control Plane API
+            const response = await api.get('/events?tenantId=gasto-recorrente&limit=50');
 
-            // Mock data for UI demonstration if endpoint not ready
-            const mockEvents = [
-                { id: "evt_1", type: "request_received", timestamp: Date.now() - 1000, meta: { model: "gpt-4" } },
-                { id: "evt_2", type: "decision_made", timestamp: Date.now() - 800, meta: { chain: ["openai", "anthropic"] } },
-                { id: "evt_3", type: "provider_call", timestamp: Date.now() - 500, meta: { provider: "openai", latency: 240 } },
-            ];
-            setEvents(mockEvents);
-            setLoading(false);
-        } catch (e) {
-            console.error(e);
+            if (Array.isArray(response.data)) {
+                setEvents(response.data);
+            } else {
+                setEvents([]);
+            }
+        } catch (e: any) {
+            console.error('Failed to fetch events:', e);
+            setError('Falha ao carregar eventos. Endpoint não disponível ou sem dados.');
+            setEvents([]);
+        } finally {
             setLoading(false);
         }
     };
 
-    if (loading) return <div>Loading...</div>;
-
     return (
         <div className="space-y-6">
-            <h2 className="text-3xl font-bold tracking-tight">Events & Logs</h2>
+            <div className="flex items-center justify-between">
+                <h2 className="text-3xl font-bold tracking-tight">Events & Logs</h2>
+                <button
+                    onClick={fetchEvents}
+                    className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+                    disabled={loading}
+                >
+                    <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                    Atualizar
+                </button>
+            </div>
+
+            {error && (
+                <div className="p-4 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded">
+                    {error}
+                </div>
+            )}
 
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center">
-                        <Activity className="mr-2 h-5 w-5" /> Recent Events
+                        <Activity className="mr-2 h-5 w-5" /> Eventos Recentes
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <div className="space-y-4">
-                        {events.map((evt) => (
-                            <div key={evt.id} className="flex flex-col border-b pb-4 last:border-0 last:pb-0">
-                                <div className="flex justify-between">
-                                    <span className="font-semibold text-sm">{evt.type}</span>
-                                    <span className="text-xs text-muted-foreground">
-                                        {new Date(evt.timestamp).toLocaleString()}
-                                    </span>
+                    {loading ? (
+                        <div className="flex items-center justify-center p-8">Carregando...</div>
+                    ) : events.length === 0 ? (
+                        <div className="text-center text-muted-foreground py-8">
+                            Nenhum evento encontrado. Os eventos serão exibidos conforme requisições são processadas pelo Gateway.
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {events.map((evt) => (
+                                <div key={evt.id} className="flex flex-col border-b pb-4 last:border-0 last:pb-0">
+                                    <div className="flex justify-between">
+                                        <span className="font-semibold text-sm">{evt.type}</span>
+                                        <span className="text-xs text-muted-foreground">
+                                            {new Date(evt.timestamp).toLocaleString('pt-BR')}
+                                        </span>
+                                    </div>
+                                    <div className="mt-1 text-xs text-slate-500 font-mono whitespace-pre-wrap">
+                                        {JSON.stringify(evt.meta, null, 2)}
+                                    </div>
                                 </div>
-                                <div className="mt-1 text-xs text-slate-500 font-mono">
-                                    {JSON.stringify(evt.meta, null, 2)}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
+                    )}
                 </CardContent>
             </Card>
         </div>

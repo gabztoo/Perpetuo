@@ -11,16 +11,30 @@ import { calculateCost } from '@perpetuo/shared';
 
 import { ConfigManager } from '../services/configManager';
 
-const configManager = new ConfigManager();
-
 const TIMEOUT_MS = 30000; // 30s hard timeout per provider
 
-export async function chatRoutes(fastify: FastifyInstance, options: { authMiddleware: AuthMiddleware, quotaManager: QuotaManager, eventManager: EventManager, resilienceManager: ResilienceManager }) {
-    const { authMiddleware, quotaManager, eventManager, resilienceManager } = options;
+// Production provider configs
+const PROVIDER_CONFIGS: Record<string, { name: string; baseUrl: string; enabled: boolean }> = {
+    groq: { name: 'groq', baseUrl: 'https://api.groq.com/openai/v1', enabled: true },
+    gemini: { name: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', enabled: true },
+    openrouter: { name: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1', enabled: true },
+    openai: { name: 'openai', baseUrl: 'https://api.openai.com/v1', enabled: true }
+};
+
+// Default fallback chain for production
+const DEFAULT_FALLBACK_CHAIN = [
+    { name: 'groq', provider: 'groq' },
+    { name: 'gemini', provider: 'gemini' },
+    { name: 'openrouter', provider: 'openrouter' },
+    { name: 'openai', provider: 'openai' }
+];
+
+export async function chatRoutes(fastify: FastifyInstance, options: { authMiddleware: AuthMiddleware, quotaManager: QuotaManager, eventManager: EventManager, resilienceManager: ResilienceManager, configManager: ConfigManager }) {
+    const { authMiddleware, quotaManager, eventManager, resilienceManager, configManager } = options;
 
     // Support /v1/chat/completions AND /r/:routeKey/v1/chat/completions
     const handler = async (req: any, reply: any) => {
-        const requestId = (req.id as string) || crypto.randomUUID(); // Fallback if Fastify didn't gen one (unlikely with header settings)
+        const requestId = (req.id as string) || crypto.randomUUID();
         const body = req.body;
         const idempotencyKey = req.headers['x-idempotency-key'];
 
@@ -37,7 +51,6 @@ export async function chatRoutes(fastify: FastifyInstance, options: { authMiddle
         try {
             await authMiddleware.handle(req, reply);
         } catch (e: any) {
-            // Sanitize error for security
             return reply.code(e.statusCode || 401).send({
                 error: process.env.NODE_ENV === 'production' ? 'Authorization failed' : e.message
             });
@@ -60,7 +73,7 @@ export async function chatRoutes(fastify: FastifyInstance, options: { authMiddle
         });
 
         // 1. Quotas (Rate Limit & Budget)
-        if (tenant.limits.rateLimitMin) {
+        if (tenant.limits && tenant.limits.rateLimitMin) {
             const { blocked } = await quotaManager.checkRateLimit(tenantId, tenant.limits.rateLimitMin);
             if (blocked) {
                 eventManager.emit({ id: crypto.randomUUID(), type: 'quota_blocked', tenantId, requestId, timestamp: Date.now(), meta: { reason: 'rate_limit' } });
@@ -68,7 +81,7 @@ export async function chatRoutes(fastify: FastifyInstance, options: { authMiddle
             }
         }
 
-        if (tenant.limits.budgetDay) {
+        if (tenant.limits && tenant.limits.budgetDay) {
             const { blocked } = await quotaManager.checkBudget(tenantId, tenant.limits.budgetDay);
             if (blocked) {
                 eventManager.emit({ id: crypto.randomUUID(), type: 'quota_blocked', tenantId, requestId, timestamp: Date.now(), meta: { reason: 'budget' } });
@@ -76,8 +89,9 @@ export async function chatRoutes(fastify: FastifyInstance, options: { authMiddle
             }
         }
 
-        // 2. Decision Engine
-        let chain;
+        // 2. Decision Engine - Build fallback chain
+        let chain = [...DEFAULT_FALLBACK_CHAIN];
+
         try {
             if (remoteConfig) {
                 const route = remoteConfig.routes.find((r: any) => r.key === routeKey);
@@ -86,18 +100,10 @@ export async function chatRoutes(fastify: FastifyInstance, options: { authMiddle
                     if (policy && policy.rules[0]) {
                         chain = policy.rules[0].action.modelOrder.map((m: string) => ({
                             name: m,
-                            // Simplistic provider extraction (e.g. "openai:gpt-4" -> "openai")
                             provider: m.includes(':') ? m.split(':')[0] : (remoteConfig.providers.find((p: any) => m.includes(p.name))?.name || 'openai')
                         }));
                     }
                 }
-            }
-
-            // Fallback to static config
-            if (!chain || chain.length === 0) {
-                const localConfig = configManager.getLocalConfig();
-                const engine = new DecisionEngine(localConfig);
-                chain = engine.selectModels(body);
             }
 
             eventManager.emit({ id: crypto.randomUUID(), type: 'decision_made', tenantId, requestId, timestamp: Date.now(), meta: { chain: chain.map((m: any) => m.name), route: routeKey } });
@@ -109,24 +115,20 @@ export async function chatRoutes(fastify: FastifyInstance, options: { authMiddle
         let lastError: any = null;
         const totalStartTime = Date.now();
 
+        logger.info({ requestId, chain: chain.map(m => m.name) }, 'Starting provider chain execution');
+
         for (let i = 0; i < chain.length; i++) {
             const model = chain[i];
 
-            // Local config lookup
-            let providerConfig = configManager.getLocalConfig().providers.find(p => p.name === model.provider);
-
-            // Remote config override (BYOK)
-            if (remoteConfig) {
-                const remoteProv = remoteConfig.providers.find((p: any) => p.name === model.provider);
-                if (remoteProv) {
-                    // TODO: Decrypt using PERPETUO_KMS_MASTER_KEY if necessary
-                }
+            const providerConfig = PROVIDER_CONFIGS[model.provider];
+            if (!providerConfig || !providerConfig.enabled) {
+                logger.warn({ requestId, provider: model.provider }, 'Provider not configured or disabled');
+                continue;
             }
-            if (!providerConfig || !providerConfig.enabled) continue;
 
             const provider = getProvider(model.provider);
             const apiKeyHeader = `x-provider-key-${model.provider}`;
-            const apiKey = req.headers[apiKeyHeader] as string || process.env[providerConfig.apiKeyEnvVar || ''];
+            const apiKey = req.headers[apiKeyHeader] as string;
 
             if (!apiKey) {
                 logger.warn({ requestId, provider: model.provider }, 'Missing API Key');
@@ -138,7 +140,7 @@ export async function chatRoutes(fastify: FastifyInstance, options: { authMiddle
 
                 const attemptStart = Date.now();
 
-                // EXECUTION with TIMEOUT (Rule 1: Don't hang)
+                // EXECUTION with TIMEOUT
                 const response = await Promise.race([
                     provider.invoke(body, providerConfig, { apiKey, requestId, tenantId }),
                     new Promise<never>((_, reject) =>
@@ -151,11 +153,11 @@ export async function chatRoutes(fastify: FastifyInstance, options: { authMiddle
                 // Success Logging
                 logger.info({ requestId, tenantId, model: model.name, provider: model.provider, duration, status: 'success' }, 'Chat completion success');
 
-                // Usage Tracking (Rule 2: Honest Billing)
+                // Usage Tracking
                 const usage = response.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
                 const totalCost = calculateCost(model.name, usage.prompt_tokens, usage.completion_tokens);
 
-                // Fire & forget quota update
+                // Fire & forget
                 quotaManager.recordUsage(tenantId, totalCost, usage.total_tokens).catch(err => {
                     logger.error({ err }, 'Failed to record usage');
                 });
@@ -163,25 +165,7 @@ export async function chatRoutes(fastify: FastifyInstance, options: { authMiddle
                 requestCounter.labels(tenantId, '/v1/chat/completions', model.name, model.provider, '200').inc();
                 latencyHistogram.labels(tenantId, '/v1/chat/completions', model.name, model.provider).observe(duration);
 
-                eventManager.emit({
-                    id: crypto.randomUUID(),
-                    type: 'request_succeeded',
-                    tenantId,
-                    requestId,
-                    timestamp: Date.now(),
-                    meta: {
-                        provider: model.provider,
-                        duration,
-                        // Detailed billing data
-                        cost: totalCost,
-                        prompt_tokens: usage.prompt_tokens,
-                        completion_tokens: usage.completion_tokens
-                    }
-                });
-
-                if (i > 0) {
-                    fallbackCounter.labels(tenantId, '/v1/chat/completions', chain[0].name, model.name, 'error_retry').inc();
-                }
+                eventManager.emit({ id: crypto.randomUUID(), type: 'request_succeeded', tenantId, requestId, timestamp: Date.now(), meta: { provider: model.provider, duration } });
 
                 if (idempotencyKey) {
                     await resilienceManager.saveIdempotencyResult(idempotencyKey, response);
@@ -191,16 +175,14 @@ export async function chatRoutes(fastify: FastifyInstance, options: { authMiddle
                 return reply.send(response);
 
             } catch (e: any) {
-                const duration = Date.now() - totalStartTime; // Accumulate latency? Or distinct attempt? Use attemptStart if available, else total.
-                // Log failure
-                logger.error({ requestId, provider: model.provider, error: e.message, status: e.statusCode }, 'Provider failed');
+                const duration = Date.now() - totalStartTime;
+                logger.error({ requestId, provider: model.provider, error: e.message }, 'Provider failed');
 
                 requestCounter.labels(tenantId, '/v1/chat/completions', model.name, model.provider, String(e.statusCode || 500)).inc();
                 eventManager.emit({ id: crypto.randomUUID(), type: 'provider_failure', tenantId, requestId, timestamp: Date.now(), meta: { provider: model.provider, error: e.message } });
 
                 await resilienceManager.recordFailure(model.provider);
                 lastError = e;
-                // Loop continues to next provider (Rule 1: Fallback deterministically)
             }
         }
 
