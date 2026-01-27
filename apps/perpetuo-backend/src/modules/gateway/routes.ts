@@ -4,6 +4,13 @@ import axios from 'axios';
 import { sendError } from '../shared/http';
 import { validateAPIKey } from '../shared/http';
 import { decryptKey } from '../shared/crypto';
+import {
+    ErrorClassifier,
+    ModelAliasResolver,
+    StrategyResolver,
+    ProviderSelector,
+    type PerpetuoConfig,
+} from '@perpetuo/core';
 
 // Minimal OpenAI-compatible request type
 interface ChatCompletionRequest {
@@ -31,25 +38,19 @@ interface ChatCompletionResponse {
   };
 }
 
-// Map model names to provider
-function detectProvider(model: string): string {
-  if (model.startsWith('gpt-')) return 'openai';
-  if (model.startsWith('claude-')) return 'anthropic';
-  if (model.startsWith('gemini-')) return 'google';
-  if (model.startsWith('command-')) return 'cohere';
-  if (model.startsWith('mistral-')) return 'mistral';
-  return 'openai'; // default
-}
-
 // GATEWAY: OpenAI-compatible endpoint
 export async function gatewayRoutes(app: FastifyInstance, prisma: PrismaClient) {
+  // Initialize resolvers
+  const errorClassifier = new ErrorClassifier();
+  
   app.post<{ Body: ChatCompletionRequest }>(
     '/v1/chat/completions',
     async (request: FastifyRequest, reply: FastifyReply) => {
       const startTime = Date.now();
       let workspaceId: string | undefined;
-      let providersUsed: string[] = [];
+      let providersAttempted: string[] = [];
       let lastError: any = null;
+      let fallbackUsed = false;
 
       try {
         // 1. Validate API key from header
@@ -90,7 +91,7 @@ export async function gatewayRoutes(app: FastifyInstance, prisma: PrismaClient) 
         let response: ChatCompletionResponse | null = null;
 
         for (const providerKey of providerKeys) {
-          providersUsed.push(providerKey.provider);
+          providersAttempted.push(providerKey.provider);
           
           try {
             const decryptedKey = decryptKey(providerKey.api_key);
@@ -105,7 +106,7 @@ export async function gatewayRoutes(app: FastifyInstance, prisma: PrismaClient) 
               // Success - log and return
               const duration = Date.now() - startTime;
               
-              // Log request (sync in MVP)
+              // Log request with decision info
               await prisma.requestLog.create({
                 data: {
                   workspace_id: workspaceId,
@@ -117,6 +118,9 @@ export async function gatewayRoutes(app: FastifyInstance, prisma: PrismaClient) 
                   output_tokens: response.usage.completion_tokens,
                   duration_ms: duration,
                   user_id: '', // TODO: extract from workspace owner
+                  // NEW: Decision log fields
+                  fallback_used: fallbackUsed,
+                  providers_attempted: providersAttempted.join(','),
                 },
               });
 
@@ -126,10 +130,49 @@ export async function gatewayRoutes(app: FastifyInstance, prisma: PrismaClient) 
               return reply.status(200).send(response);
             }
           } catch (error: any) {
-            console.log(`Provider ${providerKey.provider} failed:`, error.message);
+            // CLASSIFY ERROR
+            const classification = errorClassifier.classify(error);
+
+            console.log(
+              `Provider ${providerKey.provider} failed (${classification.reason}):`,
+              error.message
+            );
+
             lastError = error;
-            // Continue to next provider
-            continue;
+
+            // ABORT if fatal error
+            if (!classification.retryable) {
+              console.error(
+                `Fatal error from ${providerKey.provider}: ${classification.reason}`
+              );
+
+              const duration = Date.now() - startTime;
+              await prisma.requestLog.create({
+                data: {
+                  workspace_id: workspaceId,
+                  api_key_id: '',
+                  provider_used: providerKey.provider,
+                  model: body.model,
+                  status_code: classification.statusCode || 502,
+                  error_message: classification.explanation,
+                  duration_ms: duration,
+                  user_id: '',
+                  fallback_used: fallbackUsed,
+                  providers_attempted: providersAttempted.join(','),
+                },
+              });
+
+              return sendError(
+                reply,
+                classification.explanation,
+                classification.statusCode === 401 ? 401 : 502
+              );
+            }
+
+            // RETRY: Continue to next provider (retryable error)
+            if (providersAttempted.length > 1) {
+              fallbackUsed = true;
+            }
           }
         }
 
@@ -139,12 +182,14 @@ export async function gatewayRoutes(app: FastifyInstance, prisma: PrismaClient) 
           data: {
             workspace_id: workspaceId,
             api_key_id: '',
-            provider_used: providersUsed.join(','),
+            provider_used: providersAttempted.join(','),
             model: body.model,
             status_code: 503,
             error_message: lastError?.message || 'All providers failed',
             duration_ms: duration,
             user_id: '',
+            fallback_used: fallbackUsed,
+            providers_attempted: providersAttempted.join(','),
           },
         });
 
