@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/main.ts",
-    "build": "tsup src/main.ts --format esm --outDir dist",
+    "build": "tsup src/main.ts --format esm --outDir dist --target es2022",
     "start": "node dist/main.js",
     "lint": "eslint src/**",
     "test": "vitest run"
