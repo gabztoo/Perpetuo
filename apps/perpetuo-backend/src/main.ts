@@ -2,8 +2,10 @@ import fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
-import { PrismaClient } from '@prisma/client';
+import pkg from '@prisma/client';
 import { authRoutes } from './modules/auth/routes';
+
+const { PrismaClient } = pkg;
 import { workspaceRoutes } from './modules/workspaces/routes';
 import { providerRoutes } from './modules/providers/routes';
 import { apiKeyRoutes } from './modules/gateway/api-keys';
