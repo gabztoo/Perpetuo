@@ -28,7 +28,7 @@ services:
       DATABASE_URL: postgresql://perpetuo:perpetuo@postgres:5432/perpetuo
       JWT_SECRET: dev-secret-change-in-prod
       PORT: 3000
-      FRONTEND_URL: http://localhost:3001
+      FRONTEND_URL: https://perpetuo-dashboard.fly.dev
     ports:
       - "3000:3000"
     volumes:
@@ -39,7 +39,7 @@ services:
     build:
       context: apps/perpetuo-dashboard
     environment:
-      VITE_API_URL: http://localhost:3000
+      VITE_API_URL: https://perpetuo-backend.fly.dev
     ports:
       - "3001:3001"
     volumes:

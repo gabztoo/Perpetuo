@@ -45,6 +45,15 @@ const routes = [
         icon: Settings,
         href: "/dashboard/settings",
     },
+    {
+        title: "Documentation",
+        links: [
+            { name: "Getting Started", href: "/docs/getting-started" },
+            { name: "LLM Gateways", href: "/docs/llm-gateways" },
+            { name: "Analytics & Monitoring", href: "/docs/analytics-monitoring" },
+            { name: "API Reference", href: "/docs/api-reference" },
+        ],
+    },
 ];
 
 export const Sidebar = () => {

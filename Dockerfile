@@ -3,23 +3,48 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-COPY apps/perpetuo-backend ./
+# Copy workspace files
+COPY pnpm-workspace.yaml ./
+COPY package.json ./
+COPY pnpm-lock.yaml ./
 
-RUN npm install
+# Install pnpm globally
+RUN npm install -g pnpm
 
-RUN npm run build
+# Copy all apps and packages
+COPY packages ./packages
+COPY apps/perpetuo-backend ./apps/perpetuo-backend
+
+# Install dependencies (pnpm)
+RUN pnpm install --frozen-lockfile
+
+# Build backend
+WORKDIR /app/apps/perpetuo-backend
+RUN pnpm run build
 
 # Runtime stage
 FROM node:20-alpine
 
 WORKDIR /app
 
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+# Install pnpm
+RUN npm install -g pnpm
 
-RUN npm install --production
+# Copy workspace files
+COPY pnpm-workspace.yaml ./
+COPY package.json ./
+COPY pnpm-lock.yaml ./
+
+# Copy built app
+COPY --from=builder /app/apps/perpetuo-backend/dist ./apps/perpetuo-backend/dist
+COPY --from=builder /app/apps/perpetuo-backend/package.json ./apps/perpetuo-backend/
+COPY --from=builder /app/apps/perpetuo-backend/prisma ./apps/perpetuo-backend/prisma
+
+# Copy packages (needed for prisma)
+COPY --from=builder /app/packages ./packages
+COPY --from=builder /app/node_modules ./node_modules
+
+WORKDIR /app/apps/perpetuo-backend
 
 EXPOSE 3000
 

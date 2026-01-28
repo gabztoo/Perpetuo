@@ -54,6 +54,16 @@ const Hero: React.FC<HeroProps> = ({ content }) => {
                  <span key={i} className="flex items-center gap-1.5"><CheckCircle2 size={16} className="text-brand-500"/> {badge}</span>
                ))}
             </div>
+
+            <div className="mt-8 text-center lg:text-left">
+              <h2 className="text-lg font-semibold text-white mb-4">Documentação</h2>
+              <ul className="space-y-2">
+                <li><a href="/docs/getting-started" className="text-blue-500 underline">Getting Started</a></li>
+                <li><a href="/docs/llm-gateways" className="text-blue-500 underline">LLM Gateways</a></li>
+                <li><a href="/docs/analytics-monitoring" className="text-blue-500 underline">Analytics & Monitoring</a></li>
+                <li><a href="/docs/api-reference" className="text-blue-500 underline">API Reference</a></li>
+              </ul>
+            </div>
           </div>
 
           {/* Right Content - The Diagram */}
