@@ -18,6 +18,10 @@ COPY apps/perpetuo-backend ./apps/perpetuo-backend
 # Install dependencies (pnpm)
 RUN pnpm install --frozen-lockfile
 
+# Build core package first (dependency)
+WORKDIR /app/packages/core
+RUN pnpm run build
+
 # Build backend
 WORKDIR /app/apps/perpetuo-backend
 RUN pnpm run build
