@@ -4,4 +4,5 @@ export * from './policy/engine';
 export * from './resolvers/modelAlias';
 export * from './resolvers/strategy';
 export * from './resolvers/providerSelector';
+export * from './resolvers/autoRouter';
 export * from './resilience/errorClassifier';

@@ -12,7 +12,8 @@
     },
     "dependencies": {
         "zod": "^3.22.4",
-        "yaml": "^2.3.4"
+        "yaml": "^2.3.4",
+        "node-fetch": "^3.3.2"
     },
     "devDependencies": {
         "@types/node": "^20.10.0",

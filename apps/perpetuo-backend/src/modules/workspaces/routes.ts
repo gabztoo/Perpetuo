@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
-import { sendSuccess, sendError } from '../shared/http';
+import { sendSuccess, sendError } from '../../shared/http';
 
 const CreateWorkspaceSchema = z.object({
   name: z.string().min(1),

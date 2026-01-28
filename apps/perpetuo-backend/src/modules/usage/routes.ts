@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { PrismaClient } from '@prisma/client';
-import { sendSuccess, sendError } from '../shared/http';
+import { sendSuccess, sendError } from '../../shared/http';
 
 export async function usageRoutes(app: FastifyInstance, prisma: PrismaClient) {
   // Get usage summary for workspace

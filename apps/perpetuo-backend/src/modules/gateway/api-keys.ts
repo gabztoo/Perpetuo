@@ -1,8 +1,8 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
-import { sendSuccess, sendError } from '../shared/http';
-import { generateAPIKey, hashAPIKey } from '../shared/crypto';
+import { sendSuccess, sendError } from '../../shared/http';
+import { generateAPIKey, hashAPIKey } from '../../shared/crypto';
 
 const CreateAPIKeySchema = z.object({
   name: z.string().min(1),

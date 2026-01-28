@@ -1,23 +1,22 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, ProviderKey } from '@prisma/client';
 import axios from 'axios';
-import { sendError } from '../shared/http';
-import { validateAPIKey } from '../shared/http';
-import { decryptKey } from '../shared/crypto';
+import { sendError } from '../../shared/http';
+import { validateAPIKey } from '../../shared/http';
+import { decryptKey } from '../../shared/crypto';
 import {
     ErrorClassifier,
-    ModelAliasResolver,
-    StrategyResolver,
-    ProviderSelector,
-    type PerpetuoConfig,
+    AutoRouter,
+    type AutoRouterResult,
 } from '@perpetuo/core';
 
 // Minimal OpenAI-compatible request type
 interface ChatCompletionRequest {
   model: string;
-  messages: Array<{ role: string; content: string }>;
+  messages: Array<{ role: string; content: string | Array<any> }>;
   temperature?: number;
   max_tokens?: number;
+  routing_preference?: 'quality' | 'cost' | 'latency'; // NEW: Auto Router tradeoff
   [key: string]: any; // Allow other fields
 }
 
@@ -42,15 +41,24 @@ interface ChatCompletionResponse {
 export async function gatewayRoutes(app: FastifyInstance, prisma: PrismaClient) {
   // Initialize resolvers
   const errorClassifier = new ErrorClassifier();
+  const autoRouter = new AutoRouter({
+    apiKey: process.env.NOTDIAMOND_API_KEY || '',
+    enabled: true,
+    defaultTradeoff: 'quality',
+    cacheEnabled: true,
+    cacheTtlMs: 60000,
+    fallbackModel: 'gpt-4-turbo',
+  });
   
   app.post<{ Body: ChatCompletionRequest }>(
     '/v1/chat/completions',
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request: FastifyRequest<{ Body: ChatCompletionRequest }>, reply: FastifyReply) => {
       const startTime = Date.now();
       let workspaceId: string | undefined;
       let providersAttempted: string[] = [];
       let lastError: any = null;
       let fallbackUsed = false;
+      let routingDecision: AutoRouterResult | null = null;
 
       try {
         // 1. Validate API key from header
@@ -87,6 +95,35 @@ export async function gatewayRoutes(app: FastifyInstance, prisma: PrismaClient) 
           return sendError(reply, 'No providers configured for this workspace', 400);
         }
 
+        // 3.5 NEW: Auto Router - Select best model if model="auto" or "best"
+        let selectedModel = body.model;
+        
+        if (body.model === 'auto' || body.model === 'best' || body.model === 'router') {
+          // Get available models from workspace providers
+          const candidateModels = providerKeys.map((pk: ProviderKey) => ({
+            provider: pk.provider,
+            model: getDefaultModelForProvider(pk.provider),
+          }));
+
+          // Convert messages to string format for analysis
+          const messagesForAnalysis = body.messages.map((m: { role: string; content: string | Array<any> }) => ({
+            role: m.role,
+            content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+          }));
+
+          routingDecision = await autoRouter.selectModel({
+            messages: messagesForAnalysis,
+            tradeoff: body.routing_preference || 'quality',
+            candidateModels: candidateModels.length > 0 ? candidateModels : undefined,
+          });
+
+          selectedModel = routingDecision.model;
+          
+          console.log(`[AutoRouter] Selected ${routingDecision.provider}/${routingDecision.model} ` +
+            `(${routingDecision.tradeoff}, ${routingDecision.costSavings}% savings, ` +
+            `cache=${routingDecision.fromCache})`);
+        }
+
         // 4. Try each provider in priority order (fallback)
         let response: ChatCompletionResponse | null = null;
 
@@ -99,7 +136,7 @@ export async function gatewayRoutes(app: FastifyInstance, prisma: PrismaClient) 
               providerKey.provider,
               decryptedKey,
               body,
-              request
+              request as FastifyRequest
             );
 
             if (response) {
@@ -112,7 +149,7 @@ export async function gatewayRoutes(app: FastifyInstance, prisma: PrismaClient) 
                   workspace_id: workspaceId,
                   api_key_id: '', // TODO: extract from token
                   provider_used: providerKey.provider,
-                  model: body.model,
+                  model: selectedModel, // Use selected model (may be from auto-router)
                   status_code: 200,
                   input_tokens: response.usage.prompt_tokens,
                   output_tokens: response.usage.completion_tokens,
@@ -127,7 +164,25 @@ export async function gatewayRoutes(app: FastifyInstance, prisma: PrismaClient) 
               // Update usage counter
               await updateUsageCounter(prisma, workspaceId, response.usage);
 
-              return reply.status(200).send(response);
+              // Build response with routing decision header
+              const responseData: any = { ...response };
+              
+              // Add routing decision to response (transparency!)
+              if (routingDecision) {
+                responseData['x-perpetuo-routing-decision'] = {
+                  session_id: routingDecision.sessionId,
+                  selected_provider: routingDecision.provider,
+                  selected_model: routingDecision.model,
+                  original_model: body.model,
+                  reasoning: routingDecision.reasoning,
+                  tradeoff: routingDecision.tradeoff,
+                  cost_savings_percent: routingDecision.costSavings,
+                  latency_estimate_ms: routingDecision.latencyEstimate,
+                  from_cache: routingDecision.fromCache,
+                };
+              }
+
+              return reply.status(200).send(responseData);
             }
           } catch (error: any) {
             // CLASSIFY ERROR
@@ -241,6 +296,23 @@ async function callOpenAI(
   );
 
   return response.data as ChatCompletionResponse;
+}
+
+// Get default model for each provider (used by auto-router)
+function getDefaultModelForProvider(provider: string): string {
+  const defaults: Record<string, string> = {
+    openai: 'gpt-4-turbo',
+    anthropic: 'claude-3-5-sonnet-latest',
+    google: 'gemini-1.5-pro',
+    groq: 'mixtral-8x7b-32768',
+    azure: 'gpt-4',
+    bedrock: 'anthropic.claude-3-sonnet-20240229-v1:0',
+    together: 'meta-llama/Llama-3.1-70B-Instruct-Turbo',
+    mistral: 'mistral-large-latest',
+    cohere: 'command-r-plus',
+    perplexity: 'llama-3.1-sonar-large-128k-online',
+  };
+  return defaults[provider.toLowerCase()] || 'gpt-4-turbo';
 }
 
 // Update usage counter synchronously

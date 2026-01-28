@@ -1,9 +1,9 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
-import { sendSuccess, sendError } from '../shared/http';
-import { encryptKey, decryptKey } from '../shared/crypto';
-import { SUPPORTED_PROVIDERS } from '../shared/types';
+import { sendSuccess, sendError } from '../../shared/http';
+import { encryptKey, decryptKey } from '../../shared/crypto';
+import { SUPPORTED_PROVIDERS } from '../../shared/types';
 
 const AddProviderKeySchema = z.object({
   provider: z.enum([...SUPPORTED_PROVIDERS] as [string, ...string[]]),

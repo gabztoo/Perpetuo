@@ -1,8 +1,8 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
-import { hashPassword, comparePassword, generateAPIKey } from '../shared/crypto';
-import { sendSuccess, sendError } from '../shared/http';
+import { hashPassword, comparePassword, generateAPIKey } from '../../shared/crypto';
+import { sendSuccess, sendError } from '../../shared/http';
 
 const SignupSchema = z.object({
   email: z.string().email(),
