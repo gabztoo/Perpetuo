@@ -27,7 +27,7 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install pnpm
+# Install pnpm globally
 RUN npm install -g pnpm
 
 # Copy workspace files
@@ -35,14 +35,15 @@ COPY pnpm-workspace.yaml ./
 COPY package.json ./
 COPY pnpm-lock.yaml ./
 
-# Copy built app
-COPY --from=builder /app/apps/perpetuo-backend/dist ./apps/perpetuo-backend/dist
-COPY --from=builder /app/apps/perpetuo-backend/package.json ./apps/perpetuo-backend/
-COPY --from=builder /app/apps/perpetuo-backend/prisma ./apps/perpetuo-backend/prisma
-
-# Copy packages (needed for prisma)
-COPY --from=builder /app/packages ./packages
+# Copy all node_modules from builder
 COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages ./packages
+
+# Copy backend package files
+COPY --from=builder /app/apps/perpetuo-backend/package.json ./apps/perpetuo-backend/
+COPY --from=builder /app/apps/perpetuo-backend/dist ./apps/perpetuo-backend/dist
+COPY --from=builder /app/apps/perpetuo-backend/prisma ./apps/perpetuo-backend/prisma
+COPY --from=builder /app/apps/perpetuo-backend/node_modules ./apps/perpetuo-backend/node_modules
 
 WORKDIR /app/apps/perpetuo-backend
 
