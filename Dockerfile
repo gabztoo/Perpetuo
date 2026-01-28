@@ -7,6 +7,7 @@ WORKDIR /app
 COPY pnpm-workspace.yaml ./
 COPY package.json ./
 COPY pnpm-lock.yaml ./
+COPY tsconfig.json ./
 
 # Install pnpm globally
 RUN npm install -g pnpm
@@ -38,6 +39,7 @@ RUN npm install -g pnpm
 COPY pnpm-workspace.yaml ./
 COPY package.json ./
 COPY pnpm-lock.yaml ./
+COPY tsconfig.json ./
 
 # Copy all node_modules from builder
 COPY --from=builder /app/node_modules ./node_modules
