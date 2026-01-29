@@ -1,6 +1,5 @@
 ---
 description: Your perfect AI chat mode for high-level architectural documentation and review. Perfect for targeted updates after a story or researching that legacy system when nobody remembers what it's supposed to be doing.
-model: gpt-4
 tools:
   - 'search/codebase'
   - 'search/changes'
