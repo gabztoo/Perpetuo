@@ -1,6 +1,5 @@
 ---
 description: 'Expert guidance for modern search optimization: SEO, Answer Engine Optimization (AEO), and Generative Engine Optimization (GEO) with AI-ready content strategies'
-model: claude-haiku-4.5
 tools: ['search/codebase', 'web/fetch', 'web/githubRepo', 'terminalCommand', 'edit/editFiles', 'read/problems']
 ---
 

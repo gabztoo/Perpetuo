@@ -1,7 +1,7 @@
 ---
 name: 'SE: UX Designer'
 description: 'Jobs-to-be-Done analysis, user journey mapping, and UX research artifacts for Figma and design workflows'
-model: claude-haiku-4.5
+model: gpt-4
 tools: ['search/codebase', 'edit/editFiles', 'search', 'web/fetch']
 ---
 
