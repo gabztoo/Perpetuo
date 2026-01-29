@@ -8,14 +8,14 @@ import {
     CardHeader,
     CardTitle
 } from "@/components/ui/card";
-import { Activity, DollarSign } from "lucide-react";
+import { Activity, KeyRound, Server, Sigma } from "lucide-react";
+import { ensureWorkspaceId } from "@/lib/workspace";
 
 interface DashboardStats {
-    requests: number;
-    errors: number;
-    cost: number;
-    activeKeys: number;
-    errorRate: string;
+    totalRequests: number;
+    totalTokens: number;
+    providers: number;
+    apiKeys: number;
 }
 
 export default function DashboardPage() {
@@ -29,26 +29,36 @@ export default function DashboardPage() {
 
     const fetchDashboardStats = async () => {
         try {
-            // Fetch real stats from Control Plane API
-            const [keysResponse] = await Promise.all([
-                api.get('/provider-keys?tenantId=gasto-recorrente').catch(() => ({ data: [] }))
+            const workspaceId = await ensureWorkspaceId();
+            if (!workspaceId) {
+                setError('Workspace não encontrado.');
+                return;
+            }
+
+            const [usageResponse, providersResponse, apiKeysResponse] = await Promise.all([
+                api.get(`/workspaces/${workspaceId}/usage`),
+                api.get(`/workspaces/${workspaceId}/providers`),
+                api.get(`/workspaces/${workspaceId}/api-keys`),
             ]);
 
-            const activeKeys = Array.isArray(keysResponse.data)
-                ? keysResponse.data.filter((k: any) => k.status === 'ACTIVE').length
-                : 0;
+            const usagePayload = usageResponse.data?.data ?? usageResponse.data;
+            const providersPayload = providersResponse.data?.data ?? providersResponse.data;
+            const apiKeysPayload = apiKeysResponse.data?.data ?? apiKeysResponse.data;
 
-            // Stats will be populated from real metrics once available
+            const totalRequests = Number(usagePayload?.total_requests ?? 0);
+            const totalTokens = Number(usagePayload?.total_input_tokens ?? 0) + Number(usagePayload?.total_output_tokens ?? 0);
+            const providers = Array.isArray(providersPayload) ? providersPayload.length : 0;
+            const apiKeys = Array.isArray(apiKeysPayload) ? apiKeysPayload.length : 0;
+
             setStats({
-                requests: 0,
-                errors: 0,
-                cost: 0,
-                activeKeys,
-                errorRate: '0%'
+                totalRequests,
+                totalTokens,
+                providers,
+                apiKeys,
             });
         } catch (e) {
             console.error('Failed to fetch dashboard stats:', e);
-            setError('Falha ao carregar estatísticas. Verifique a conexão com o Control Plane.');
+            setError('Falha ao carregar estatísticas. Verifique a conexão com o backend.');
         } finally {
             setLoading(false);
         }
@@ -75,38 +85,38 @@ export default function DashboardPage() {
                         <Activity className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{stats.requests.toLocaleString()}</div>
+                        <div className="text-2xl font-bold">{stats.totalRequests.toLocaleString()}</div>
                         <p className="text-xs text-muted-foreground">Requisições processadas</p>
                     </CardContent>
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Errors</CardTitle>
-                        <ShieldAlert className="h-4 w-4 text-muted-foreground" />
+                        <CardTitle className="text-sm font-medium">Total Tokens</CardTitle>
+                        <Sigma className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{stats.errors}</div>
-                        <p className="text-xs text-muted-foreground text-red-500">{stats.errorRate} Error Rate</p>
+                        <div className="text-2xl font-bold">{stats.totalTokens.toLocaleString()}</div>
+                        <p className="text-xs text-muted-foreground">Input + output</p>
                     </CardContent>
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Estimated Cost</CardTitle>
-                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                        <CardTitle className="text-sm font-medium">Providers</CardTitle>
+                        <Server className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">${stats.cost.toFixed(2)}</div>
-                        <p className="text-xs text-muted-foreground">Custo estimado hoje</p>
+                        <div className="text-2xl font-bold">{stats.providers}</div>
+                        <p className="text-xs text-muted-foreground">Providers configurados</p>
                     </CardContent>
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Active Keys</CardTitle>
-                        <Key className="h-4 w-4 text-muted-foreground" />
+                        <CardTitle className="text-sm font-medium">API Keys</CardTitle>
+                        <KeyRound className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{stats.activeKeys}</div>
-                        <p className="text-xs text-muted-foreground">Provider keys ativas</p>
+                        <div className="text-2xl font-bold">{stats.apiKeys}</div>
+                        <p className="text-xs text-muted-foreground">Tokens ativos e revogados</p>
                     </CardContent>
                 </Card>
             </div>
@@ -133,45 +143,3 @@ export default function DashboardPage() {
     );
 }
 
-// Icon Stub
-function ShieldAlert(props: any) {
-    return (
-        <svg
-            {...props}
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-        >
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
-            <path d="M12 8v4" />
-            <path d="M12 16h.01" />
-        </svg>
-    )
-}
-
-function Key(props: any) {
-    return (
-        <svg
-            {...props}
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-        >
-            <circle cx="7.5" cy="15.5" r="5.5" />
-            <path d="m21 2-9.6 9.6" />
-            <path d="m15.5 7.5 3 3L22 7l-3-3" />
-        </svg>
-    )
-}

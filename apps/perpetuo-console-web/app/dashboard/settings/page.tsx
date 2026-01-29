@@ -10,7 +10,7 @@ export default function SettingsPage() {
 
     useEffect(() => {
         api.get('/auth/me')
-            .then(res => setUser(res.data))
+            .then(res => setUser(res.data?.data ?? res.data))
             .catch(() => { });
     }, []);
 

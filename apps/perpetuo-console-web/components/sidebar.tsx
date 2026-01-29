@@ -8,14 +8,14 @@ import {
     Settings,
     Activity,
     Key,
-    FolderGit2,
-    ShieldAlert,
+    BarChart3,
+    Server,
     LogOut
 } from "lucide-react";
-import api from "@/lib/api";
 import { useRouter } from "next/navigation";
+import { setStoredToken, setStoredWorkspaceId } from "@/lib/storage";
 
-const routes = [
+const mainRoutes = [
     {
         label: "Dashboard",
         icon: LayoutDashboard,
@@ -23,37 +23,41 @@ const routes = [
         color: "text-sky-500",
     },
     {
-        label: "Projects & Routes",
-        icon: FolderGit2,
-        href: "/dashboard/projects",
+        label: "Providers",
+        icon: Server,
+        href: "/dashboard/providers",
         color: "text-violet-500",
     },
     {
-        label: "Provider Keys",
+        label: "API Keys",
         icon: Key,
-        href: "/dashboard/keys",
+        href: "/dashboard/api-keys",
         color: "text-pink-700",
     },
     {
-        label: "Events & Logs",
+        label: "Logs",
         icon: Activity,
-        href: "/dashboard/events",
+        href: "/dashboard/logs",
         color: "text-orange-700",
+    },
+    {
+        label: "Usage",
+        icon: BarChart3,
+        href: "/dashboard/usage",
+        color: "text-emerald-600",
     },
     {
         label: "Settings",
         icon: Settings,
         href: "/dashboard/settings",
     },
-    {
-        title: "Documentation",
-        links: [
-            { name: "Getting Started", href: "/docs/getting-started" },
-            { name: "LLM Gateways", href: "/docs/llm-gateways" },
-            { name: "Analytics & Monitoring", href: "/docs/analytics-monitoring" },
-            { name: "API Reference", href: "/docs/api-reference" },
-        ],
-    },
+];
+
+const docRoutes = [
+    { name: "Getting Started", href: "/docs/getting-started" },
+    { name: "LLM Gateways", href: "/docs/llm-gateways" },
+    { name: "Analytics & Monitoring", href: "/docs/analytics-monitoring" },
+    { name: "API Reference", href: "/docs/api-reference" },
 ];
 
 export const Sidebar = () => {
@@ -62,7 +66,8 @@ export const Sidebar = () => {
 
     const handleLogout = async () => {
         try {
-            await api.post('/auth/logout');
+            setStoredToken(undefined);
+            setStoredWorkspaceId(undefined);
             router.push('/login');
         } catch (e) {
             console.error(e);
@@ -76,7 +81,7 @@ export const Sidebar = () => {
                     <h1 className="text-2xl font-bold">Perpetuo</h1>
                 </Link>
                 <div className="space-y-1">
-                    {routes.map((route) => (
+                    {mainRoutes.map((route) => (
                         <Link
                             href={route.href}
                             key={route.href}
@@ -91,6 +96,20 @@ export const Sidebar = () => {
                             </div>
                         </Link>
                     ))}
+                </div>
+                <div className="mt-6">
+                    <p className="px-3 text-xs uppercase tracking-wide text-zinc-500">Documentation</p>
+                    <div className="mt-2 space-y-1">
+                        {docRoutes.map((doc) => (
+                            <Link
+                                href={doc.href}
+                                key={doc.href}
+                                className="text-sm group flex p-3 w-full justify-start font-medium cursor-pointer hover:text-white hover:bg-white/10 rounded-lg transition text-zinc-400"
+                            >
+                                {doc.name}
+                            </Link>
+                        ))}
+                    </div>
                 </div>
             </div>
             <div className="px-3 py-2">

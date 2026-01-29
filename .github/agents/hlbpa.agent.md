@@ -3,19 +3,19 @@ description: Your perfect AI chat mode for high-level architectural documentatio
 model: claude-haiku-4.5
 tools:
   - 'search/codebase'
-  - 'changes'
+  - 'search/changes'
   - 'edit/editFiles'
   - 'web/fetch'
-  - 'findTestFiles'
-  - 'githubRepo'
-  - 'runCommands'
-  - 'runTests'
+  - 'web/githubRepo'
+  - 'execute/getTerminalOutput'
+  - 'execute/runInTerminal'
+  - 'read/terminalLastCommand'
+  - 'read/terminalSelection'
+  - 'execute/runTests'
   - 'search'
   - 'search/searchResults'
-  - 'testFailure'
-  - 'usages'
-  - 'activePullRequest'
-  - 'copilotCodingAgent'
+  - 'execute/testFailure'
+  - 'search/usages'
 ---
 
 # High-Level Big Picture Architect (HLBPA)

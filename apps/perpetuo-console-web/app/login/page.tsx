@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { setStoredToken, setStoredWorkspaceId } from '@/lib/storage';
 
 export default function LoginPage() {
     const router = useRouter();
@@ -15,7 +16,16 @@ export default function LoginPage() {
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await api.post('/auth/login', { email, password });
+            const response = await api.post('/auth/login', { email, password });
+            const payload = response.data?.data ?? response.data;
+            setStoredToken(payload?.token);
+
+            const workspacesResponse = await api.get('/workspaces');
+            const workspaces = workspacesResponse.data?.data ?? workspacesResponse.data?.workspaces ?? workspacesResponse.data;
+            const firstWorkspace = Array.isArray(workspaces) ? workspaces[0] : undefined;
+            if (firstWorkspace?.id) {
+                setStoredWorkspaceId(firstWorkspace.id);
+            }
             router.push('/dashboard');
         } catch (err: any) {
             setError(err.response?.data?.error || 'Login failed');

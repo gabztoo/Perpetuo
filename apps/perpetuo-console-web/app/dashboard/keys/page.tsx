@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Plus, Key, Trash2 } from "lucide-react";
 import {
     Dialog,
     DialogContent,
@@ -12,30 +10,38 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { ensureWorkspaceId } from "@/lib/workspace";
 
 const PROVIDERS = [
-    { id: "openai", name: "OpenAI (GPT)", icon: "https://upload.wikimedia.org/wikipedia/commons/4/4d/OpenAI_Logo.svg" },
-    { id: "gemini", name: "Google (Gemini)", icon: "https://upload.wikimedia.org/wikipedia/commons/8/8a/Google_Gemini_logo.svg" },
-    { id: "anthropic", name: "Anthropic (Claude)", icon: "https://upload.wikimedia.org/wikipedia/commons/7/78/Anthropic_logo.svg" },
-    { id: "deepseek", name: "DeepSeek", icon: "" },
-    { id: "mistral", name: "Mistral AI", icon: "" },
-    { id: "groq", name: "Groq", icon: "" },
-    { id: "huggingface", name: "Hugging Face", icon: "" },
+    { id: "openai", name: "OpenAI" },
+    { id: "anthropic", name: "Anthropic" },
+    { id: "google", name: "Google" },
+    { id: "cohere", name: "Cohere" },
+    { id: "mistral", name: "Mistral" },
 ];
 
+interface ProviderKey {
+    id: string;
+    provider: string;
+    priority: number;
+    enabled: boolean;
+    created_at?: string;
+    updated_at?: string;
+}
+
 export default function KeysPage() {
-    const [keys, setKeys] = useState<any[]>([]);
+    const [keys, setKeys] = useState<ProviderKey[]>([]);
     const [loading, setLoading] = useState(true);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     // Form State
     const [selectedProvider, setSelectedProvider] = useState<string>("");
-    const [keyName, setKeyName] = useState("");
     const [keyValue, setKeyValue] = useState("");
+    const [priority, setPriority] = useState<number>(1);
     const [submitLoading, setSubmitLoading] = useState(false);
 
     useEffect(() => {
@@ -44,14 +50,20 @@ export default function KeysPage() {
 
     const fetchKeys = async () => {
         try {
-            const tenantsRes = await api.get('/tenants/current');
-            if (tenantsRes.data.length > 0) {
-                const tenantId = tenantsRes.data[0].tenantId;
-                const res = await api.get(`/provider-keys?tenantId=${tenantId}`);
-                setKeys(res.data);
+            setLoading(true);
+            setError(null);
+            const workspaceId = await ensureWorkspaceId();
+            if (!workspaceId) {
+                setError('Workspace não encontrado.');
+                setKeys([]);
+                return;
             }
+            const res = await api.get(`/workspaces/${workspaceId}/providers`);
+            const payload = res.data?.data ?? res.data;
+            setKeys(Array.isArray(payload) ? payload : []);
         } catch (e) {
             console.error(e);
+            setError('Falha ao carregar providers.');
         } finally {
             setLoading(false);
         }
@@ -59,8 +71,8 @@ export default function KeysPage() {
 
     const handleAddClick = (providerId: string) => {
         setSelectedProvider(providerId);
-        setKeyName("");
         setKeyValue("");
+        setPriority(1);
         setIsDialogOpen(true);
     };
 
@@ -68,22 +80,40 @@ export default function KeysPage() {
         if (!keyValue) return;
         setSubmitLoading(true);
         try {
-            const tenantsRes = await api.get('/tenants/current');
-            const tenantId = tenantsRes.data[0].tenantId;
+            const workspaceId = await ensureWorkspaceId();
+            if (!workspaceId) {
+                setError('Workspace não encontrado.');
+                return;
+            }
 
-            await api.post(`/provider-keys?tenantId=${tenantId}`, {
+            await api.post(`/workspaces/${workspaceId}/providers`, {
                 provider: selectedProvider,
-                name: keyName || selectedProvider,
-                key: keyValue
+                api_key: keyValue,
+                priority: priority || 1
             });
 
             setIsDialogOpen(false);
             fetchKeys();
         } catch (e) {
             console.error(e);
-            alert("Failed to create key");
+            alert("Falha ao salvar provider key");
         } finally {
             setSubmitLoading(false);
+        }
+    };
+
+    const handleRemove = async (providerId: string) => {
+        try {
+            const workspaceId = await ensureWorkspaceId();
+            if (!workspaceId) {
+                setError('Workspace não encontrado.');
+                return;
+            }
+            await api.delete(`/workspaces/${workspaceId}/providers/${providerId}`);
+            fetchKeys();
+        } catch (e) {
+            console.error(e);
+            alert('Falha ao remover provider key');
         }
     };
 
@@ -94,14 +124,21 @@ export default function KeysPage() {
     return (
         <div className="space-y-8">
             <div>
-                <h2 className="text-3xl font-bold tracking-tight">Bring Your Own Key (BYOK)</h2>
-                <p className="text-muted-foreground">Use your own provider API keys to access AI Gateway.</p>
+                <h2 className="text-3xl font-bold tracking-tight">Providers (BYOK)</h2>
+                <p className="text-muted-foreground">Adicione chaves de provedores para uso no Gateway.</p>
             </div>
+
+            {error && (
+                <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+                    {error}
+                </div>
+            )}
 
             <div className="rounded-md border border-slate-200">
                 {PROVIDERS.map((provider) => {
                     const isConfigured = existingProviders.has(provider.id);
                     const existingKey = keys.find(k => k.provider === provider.id);
+                    const existingKeyId = existingKey?.id;
 
                     return (
                         <div key={provider.id} className="flex items-center justify-between p-4 border-b last:border-0 hover:bg-slate-50 transition">
@@ -114,7 +151,7 @@ export default function KeysPage() {
                                     <p className="font-medium">{provider.name}</p>
                                     {isConfigured ? (
                                         <p className="text-xs text-green-600 font-medium flex items-center">
-                                            ● Active (ending in {existingKey.keyLast4})
+                                            ● {existingKey?.enabled ? 'Ativo' : 'Desativado'} • prioridade {existingKey?.priority}
                                         </p>
                                     ) : (
                                         <p className="text-xs text-muted-foreground">Not configured</p>
@@ -123,7 +160,12 @@ export default function KeysPage() {
                             </div>
                             <div>
                                 {isConfigured ? (
-                                    <Button variant="outline" size="sm" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => {/* TODO: Delete */ }}>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-red-600 border-red-200 hover:bg-red-50"
+                                        onClick={() => existingKeyId && handleRemove(existingKeyId)}
+                                    >
                                         Remove
                                     </Button>
                                 ) : (
@@ -147,18 +189,6 @@ export default function KeysPage() {
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="name" className="text-right">
-                                Name
-                            </Label>
-                            <Input
-                                id="name"
-                                value={keyName}
-                                onChange={(e) => setKeyName(e.target.value)}
-                                placeholder="Optional name"
-                                className="col-span-3"
-                            />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="key" className="text-right">
                                 API Key
                             </Label>
@@ -168,6 +198,19 @@ export default function KeysPage() {
                                 value={keyValue}
                                 onChange={(e) => setKeyValue(e.target.value)}
                                 placeholder="sk-..."
+                                className="col-span-3"
+                            />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="priority" className="text-right">
+                                Priority
+                            </Label>
+                            <Input
+                                id="priority"
+                                type="number"
+                                min={1}
+                                value={priority}
+                                onChange={(e) => setPriority(Number(e.target.value) || 1)}
                                 className="col-span-3"
                             />
                         </div>

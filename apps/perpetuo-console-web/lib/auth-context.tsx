@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import api from './api';
+import { getStoredToken, setStoredToken, setStoredWorkspaceId } from './storage';
 
 interface User {
     id: string;
@@ -36,8 +37,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const checkAuth = useCallback(async () => {
         try {
-            const response = await api.get('/me');
-            setUser(response.data);
+            const token = getStoredToken();
+            if (!token) {
+                setUser(null);
+                return;
+            }
+
+            const response = await api.get('/auth/me');
+            const payload = response.data?.data ?? response.data;
+            setUser(payload);
         } catch {
             setUser(null);
         } finally {
@@ -51,16 +59,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const login = async (email: string, password: string) => {
         const response = await api.post('/auth/login', { email, password });
-        setUser(response.data.user);
+        const payload = response.data?.data ?? response.data;
+        setStoredToken(payload?.token);
+        setUser(payload?.user);
     };
 
     const signup = async (name: string, email: string, password: string) => {
         const response = await api.post('/auth/signup', { name, email, password });
-        setUser(response.data.user);
+        const payload = response.data?.data ?? response.data;
+        setStoredToken(payload?.token);
+        setStoredWorkspaceId(payload?.workspace?.id);
+        setUser(payload?.user);
     };
 
     const logout = async () => {
-        await api.post('/auth/logout');
+        setStoredToken(undefined);
+        setStoredWorkspaceId(undefined);
         setUser(null);
     };
 
